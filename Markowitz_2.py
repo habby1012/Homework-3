@@ -55,7 +55,7 @@ class MyPortfolio:
     NOTE: You can modify the initialization function
     """
 
-    def __init__(self, price, exclude, lookback=50, gamma=0):
+    def __init__(self, price, exclude, lookback=375, gamma=0):
         self.price = price
         self.returns = price.pct_change().fillna(0)
         self.exclude = exclude
@@ -71,13 +71,31 @@ class MyPortfolio:
             index=self.price.index, columns=self.price.columns
         )
 
-        """
-        TODO: Complete Task 4 Below
-        """
+        for i in range(self.lookback + 1, len(self.price)):
+            date = self.price.index[i]
+            R_n = self.returns[assets].iloc[i - self.lookback : i]
 
-        """
-        TODO: Complete Task 4 Above
-        """
+            Sigma = R_n.cov().values
+            mu = R_n.mean().values
+            n = len(assets)
+
+            with gp.Env(empty=True) as env:
+                env.setParam("OutputFlag", 0)
+                env.setParam("DualReductions", 0)
+                env.start()
+                with gp.Model(env=env, name="portfolio") as model:
+                    w = model.addMVar(n, name="w", lb=0, ub=1)
+                    model.setObjective(w @ mu - (self.gamma / 2) * (w @ Sigma @ w), gp.GRB.MAXIMIZE)
+                    model.addConstr(w.sum() == 1, name="budget")
+                    model.optimize()
+
+                    if model.status == gp.GRB.OPTIMAL or model.status == gp.GRB.SUBOPTIMAL:
+                        self.portfolio_weights.loc[date, assets] = w.X
+                    else:
+                        self.portfolio_weights.loc[date, assets] = np.zeros(n)
+
+            self.portfolio_weights.loc[date, self.exclude] = 0.0
+
 
         self.portfolio_weights.ffill(inplace=True)
         self.portfolio_weights.fillna(0, inplace=True)
